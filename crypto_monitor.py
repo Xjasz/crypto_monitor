@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import time
-import pygame
 from selenium import webdriver
 from selenium.common import StaleElementReferenceException, NoSuchElementException
 from selenium.webdriver.common.by import By
@@ -25,8 +24,6 @@ logger = logging.getLogger()
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 logger.addHandler(console_handler)
-
-pygame.mixer.init()
 
 CRYPTO_KEYWORDS = [
     "cryptocurrency", "bitcoin", "btc", "ltc", "ethereum", "eth", "litecoin","dogecoin", "shiba inu", "floki", "pepe", "dogwifhat",
@@ -57,7 +54,6 @@ EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD', '')
 EMAIL_SERVER = os.getenv('EMAIL_SERVER', '')
 EMAIL_RECEIVER =  os.getenv('EMAIL_RECEIVER', '')
 
-ALERT_SOUND = "notice.mp3"
 FOUND_POSTS_FILE = "found_posts.txt"
 BROWSER_TYPE = 'FIREFOX'
 found_posts = set()
@@ -84,14 +80,6 @@ def setup_browser():
     driver = webdriver.Firefox(service=service, options=options)
     logger.info(driver.capabilities.get("moz:profile"))
     return driver
-
-def play_alert_sound():
-    try:
-        pygame.mixer.music.load(ALERT_SOUND)
-        pygame.mixer.music.play()
-        logger.info("Alert sound played")
-    except Exception as e:
-        logger.error(f"Error playing alert sound: {e}")
 
 def check_for_keywords(text):
     text = text.lower()
@@ -187,7 +175,6 @@ def alert_event(item, found_keywords, post_text, url_link):
     logger.info(f"Found crypto keywords in post by {item[0]}: {found_keywords}")
     logger.info(f"Post text: {post_text}")
     logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-    play_alert_sound()
     if EMAIL_ENABLED and item[1]:
         subject = f"Crypto Account: {item[0]} found ({', '.join(found_keywords)})"
         body = f"LINK: {url_link}\nNew post from {item[0]}:\n\n{post_text}"
