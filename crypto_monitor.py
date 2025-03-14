@@ -29,24 +29,24 @@ logger.addHandler(console_handler)
 pygame.mixer.init()
 
 CRYPTO_KEYWORDS = [
-    "cryptocurrency", "bitcoin", "btc", "ltc", "ethereum", "eth", "litecoin","dogecoin", "shiba inu", "floki", "pepe", "dogwifhat", "cardano",
+    "cryptocurrency", "bitcoin", "btc", "ltc", "ethereum", "eth", "litecoin","dogecoin", "shiba inu", "floki", "pepe", "dogwifhat",
     "altcoin", "bnb", "xrp", "ripple", "sol", "trx", "tron", "xlm", "stellar", 'sell', 'sold', 'buy', 'bought',"ada","vechain", "algorand",
     "trumpcoin","freedom coin"
 ]
 
 TWITTER_ACCOUNTS = [
-    "elonmusk",
-    "cz_binance",
-    "WhiteHouse",
-    "POTUS",
-    "realDonaldTrump",
-    "Pentosh1"
+    ["elonmusk",True],
+    ["cz_binance",True],
+    ["WhiteHouse",True],
+    ["POTUS",True],
+    ["realDonaldTrump",True],
+    ["Pentosh1",False]
 ]
 
 TRUTH_SOCIAL_ACCOUNTS = [
-    "realDonaldTrump",
-    "TuckerCarlson",
-    "DonaldJTrumpJr"
+    ["realDonaldTrump",True],
+    ["TuckerCarlson",True],
+    ["DonaldJTrumpJr",True]
 ]
 
 GECKO_EXE_LOC = os.getenv('GECKO_EXE_LOC', '')
@@ -111,9 +111,9 @@ def check_for_keywords(text):
                 found_keywords.append(keyword)
     return found_keywords
 
-def check_twitter_account(driver, account):
-    logger.info(f"Checking Twitter account: {account}")
-    url_link = f"https://twitter.com/{account}"
+def check_twitter_account(driver, item):
+    logger.info(f"Checking Twitter account: {item[0]}")
+    url_link = f"https://twitter.com/{item[0]}"
     try:
         driver.get(url_link)
         WebDriverWait(driver, 8).until(EC.presence_of_element_located((By.CSS_SELECTOR, "[data-testid='tweetText']")))
@@ -121,25 +121,25 @@ def check_twitter_account(driver, account):
         scroll_down(driver, scrolls=1, scroll_height=500)
         tweets = driver.find_elements(By.CSS_SELECTOR, "[data-testid='tweetText']")
         if tweets:
-            logger.info(f"Account: {account} has {len(tweets)} posts found.")
+            logger.info(f"Account: {item[0]} has {len(tweets)} posts found.")
         else:
-            logger.warning(f"No posts found on the {account} page!")
+            logger.warning(f"No posts found on the {item[0]} page!")
         for tweet in tweets[:10]:
             try:
                 tweet_text = tweet.text
                 tweet_text = re.sub(r'CZ\s+BNB', '', tweet_text, flags=re.IGNORECASE).strip()
                 found_keywords = check_for_keywords(tweet_text)
                 if found_keywords:
-                    alert_event(account, found_keywords, tweet_text, url_link)
+                    alert_event(item, found_keywords, tweet_text, url_link)
             except Exception as e:
                 logger.error(f"Error processing tweet: {e}")
     except Exception as e:
-        logger.error(f"Error checking Twitter account {account}: {e}")
+        logger.error(f"Error checking Twitter account {item[0]}: {e}")
 
 
-def check_truth_social_account(driver, account):
-    logger.info(f"Checking Truth Social account: {account}")
-    url_link = f"https://truthsocial.com/@{account}"
+def check_truth_social_account(driver, item):
+    logger.info(f"Checking Truth Social account: {item[0]}")
+    url_link = f"https://truthsocial.com/@{item[0]}"
     try:
         driver.get(url_link)
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "timeline")))
@@ -147,9 +147,9 @@ def check_truth_social_account(driver, account):
         scroll_down(driver, scrolls=1, scroll_height=500)
         posts = driver.find_elements(By.CSS_SELECTOR, "div.status__content-wrapper")
         if posts:
-            logger.info(f"Account: {account} has {len(posts)} posts found.")
+            logger.info(f"Account: {item[0]} has {len(posts)} posts found.")
         else:
-            logger.warning(f"No posts found on the {account} page!")
+            logger.warning(f"No posts found on the {item[0]} page!")
         for index, post in enumerate(posts[:10]):
             retry_attempts = 3
             while retry_attempts > 0:
@@ -165,7 +165,7 @@ def check_truth_social_account(driver, account):
                     post_text = " ".join([p.text.strip() for p in post_text_elements_clean if p.text.strip()])
                     found_keywords = check_for_keywords(post_text)
                     if found_keywords:
-                        alert_event(account,found_keywords,post_text, url_link)
+                        alert_event(item,found_keywords,post_text, url_link)
                     break
                 except (StaleElementReferenceException, NoSuchElementException):
                     logger.warning(f"StaleElementReferenceException: Retrying post {index + 1}")
@@ -175,22 +175,22 @@ def check_truth_social_account(driver, account):
                     logger.error(f"Error processing post {index + 1}: {e}")
                     break
     except Exception as e:
-        logger.error(f"Error checking Truth Social account {account}: {e}")
+        logger.error(f"Error checking Truth Social account {item[0]}: {e}")
 
-def alert_event(account, found_keywords, post_text, url_link):
+def alert_event(item, found_keywords, post_text, url_link):
     global found_posts
     trimmed_post = normalize_text(post_text)
     if trimmed_post in found_posts:
         logger.info("Duplicate post detected. Skipping alert.")
         return
     logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-    logger.info(f"Found crypto keywords in post by {account}: {found_keywords}")
+    logger.info(f"Found crypto keywords in post by {item[0]}: {found_keywords}")
     logger.info(f"Post text: {post_text}")
     logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     play_alert_sound()
-    if EMAIL_ENABLED:
-        subject = f"Crypto Account: {account} found ({', '.join(found_keywords)})"
-        body = f"LINK: {url_link}\nNew post from {account}:\n\n{post_text}"
+    if EMAIL_ENABLED and item[1]:
+        subject = f"Crypto Account: {item[0]} found ({', '.join(found_keywords)})"
+        body = f"LINK: {url_link}\nNew post from {item[0]}:\n\n{post_text}"
         send_email(subject, body)
     save_found_post(post_text)
 
@@ -237,11 +237,11 @@ def main():
     try:
         driver = setup_browser()
         service = driver.service
-        for account in TRUTH_SOCIAL_ACCOUNTS:
-            check_truth_social_account(driver, account)
+        for item in TRUTH_SOCIAL_ACCOUNTS:
+            check_truth_social_account(driver, item)
             time.sleep(2)
-        for account in TWITTER_ACCOUNTS:
-            check_twitter_account(driver, account)
+        for item in TWITTER_ACCOUNTS:
+            check_twitter_account(driver, item)
             time.sleep(2)
     except KeyboardInterrupt:
         logger.info("Monitoring stopped by user")
