@@ -189,7 +189,7 @@ def alert_event(account, found_keywords, post_text, url_link):
     logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     play_alert_sound()
     if EMAIL_ENABLED:
-        subject = f"Crypto Alert: {', '.join(found_keywords)} Found!"
+        subject = f"Crypto Account: {account} found ({', '.join(found_keywords)})"
         body = f"LINK: {url_link}\nNew post from {account}:\n\n{post_text}"
         send_email(subject, body)
     save_found_post(post_text)
