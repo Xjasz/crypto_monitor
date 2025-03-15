@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 EMAIL_ENABLED = True
+DEBUG_ENABLED = False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,11 +34,10 @@ CRYPTO_KEYWORDS = [
 
 TWITTER_ACCOUNTS = [
     ["elonmusk",True],
-    ["cz_binance",True],
     ["WhiteHouse",True],
     ["POTUS",True],
     ["realDonaldTrump",True],
-    ["Pentosh1",False]
+    ["Pentosh1",True]
 ]
 
 TRUTH_SOCIAL_ACCOUNTS = [
@@ -56,15 +56,10 @@ EMAIL_RECEIVER =  os.getenv('EMAIL_RECEIVER', '')
 
 FOUND_POSTS_FILE = "found_posts.txt"
 BROWSER_TYPE = 'FIREFOX'
-found_posts = set()
+LOADED_POSTS = set()
 
 def setup_browser():
-    if os.name == "nt":
-        log_path = "NUL"
-    else:
-        log_path = "/dev/null"
-
-    service = FirefoxService(GECKO_EXE_LOC, log_output=open(log_path, "w"))
+    service = FirefoxService(GECKO_EXE_LOC)
     options = webdriver.FirefoxOptions()
     options.binary_location = BROWSER_EXE_LOC
     options.add_argument("--log-level=3")
@@ -72,34 +67,29 @@ def setup_browser():
     options.add_argument("--disable-dev-shm-usage")
     options.set_preference("browser.console.logLevel", "fatal")
     options.set_preference("webdriver.log.file", "NUL" if os.name == "nt" else "/dev/null")
-    options.profile = BROWSER_PROFILE_DIR
+    options.set_preference("profile", BROWSER_PROFILE_DIR)
     # Comment to view
-    options.add_argument('--headless')
-    options.add_argument("--window-size=0,0")
+    # options.add_argument('--headless')
+    # options.add_argument("--window-size=0,0")
     # options.add_argument("--window-size=1920,1080")
     driver = webdriver.Firefox(service=service, options=options)
     logger.info(driver.capabilities.get("moz:profile"))
     return driver
 
 def check_for_keywords(text):
-    text = text.lower()
+    global LOADED_POSTS, CRYPTO_KEYWORDS, DEBUG_ENABLED
     found_keywords = []
+    if text in LOADED_POSTS:
+        if DEBUG_ENABLED:
+            logger.info(f"~~~~~ FOUND IN LOADED_POSTS ~~~~~")
+        return found_keywords
     for keyword in CRYPTO_KEYWORDS:
-        if keyword.lower() == "eth":
-            if re.search(r'\beth\b', text, re.IGNORECASE):
-                found_keywords.append(keyword)
-        elif keyword.lower() == "tron":
-            if re.search(r'\btron\b', text, re.IGNORECASE):
-                found_keywords.append(keyword)
-        elif keyword.lower() == "ada":
-            if re.search(r'\bada\b', text, re.IGNORECASE):
-                found_keywords.append(keyword)
-        else:
-            if keyword.lower() in text:
-                found_keywords.append(keyword)
+        if re.search(rf'(?<!\w){re.escape(keyword)}(?!\w)', text, re.IGNORECASE):
+            found_keywords.append(keyword)
     return found_keywords
 
 def check_twitter_account(driver, item):
+    global DEBUG_ENABLED
     logger.info(f"Checking Twitter account: {item[0]}")
     url_link = f"https://twitter.com/{item[0]}"
     try:
@@ -114,11 +104,13 @@ def check_twitter_account(driver, item):
             logger.warning(f"No posts found on the {item[0]} page!")
         for tweet in tweets[:10]:
             try:
-                tweet_text = tweet.text
-                tweet_text = re.sub(r'CZ\s+BNB', '', tweet_text, flags=re.IGNORECASE).strip()
-                found_keywords = check_for_keywords(tweet_text)
+                post_text = tweet.text
+                post_text = normalize_text(post_text)
+                found_keywords = check_for_keywords(post_text)
                 if found_keywords:
-                    alert_event(item, found_keywords, tweet_text, url_link)
+                    alert_event(item, found_keywords, post_text, url_link)
+                elif DEBUG_ENABLED:
+                    logger.info(f"NO MATCH FOUND IN ---->  {post_text}")
             except Exception as e:
                 logger.error(f"Error processing tweet: {e}")
     except Exception as e:
@@ -126,6 +118,7 @@ def check_twitter_account(driver, item):
 
 
 def check_truth_social_account(driver, item):
+    global DEBUG_ENABLED
     logger.info(f"Checking Truth Social account: {item[0]}")
     url_link = f"https://truthsocial.com/@{item[0]}"
     try:
@@ -151,9 +144,12 @@ def check_truth_social_account(driver, item):
                     if len(post_text_elements) > 3:
                         post_text_elements_clean = post_text_elements[:-3]
                     post_text = " ".join([p.text.strip() for p in post_text_elements_clean if p.text.strip()])
+                    post_text = normalize_text(post_text)
                     found_keywords = check_for_keywords(post_text)
                     if found_keywords:
-                        alert_event(item,found_keywords,post_text, url_link)
+                        alert_event(item, found_keywords, post_text, url_link)
+                    elif DEBUG_ENABLED:
+                        logger.info(f"NO MATCH FOUND IN ---->  {post_text}")
                     break
                 except (StaleElementReferenceException, NoSuchElementException):
                     logger.warning(f"StaleElementReferenceException: Retrying post {index + 1}")
@@ -166,11 +162,6 @@ def check_truth_social_account(driver, item):
         logger.error(f"Error checking Truth Social account {item[0]}: {e}")
 
 def alert_event(item, found_keywords, post_text, url_link):
-    global found_posts
-    trimmed_post = normalize_text(post_text)
-    if trimmed_post in found_posts:
-        logger.info("Duplicate post detected. Skipping alert.")
-        return
     logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     logger.info(f"Found crypto keywords in post by {item[0]}: {found_keywords}")
     logger.info(f"Post text: {post_text}")
@@ -199,26 +190,30 @@ def send_email(subject, body):
     logger.info(f"Email sent: {subject}")
 
 def load_found_posts():
+    global FOUND_POSTS_FILE, LOADED_POSTS
     logger.info("load_found_posts...")
-    if not os.path.exists(FOUND_POSTS_FILE):
-        return set()
-    with open(FOUND_POSTS_FILE, "r", encoding="utf-8") as f:
-        return set(line.strip() for line in f)
+    LOADED_POSTS = set()
+    if os.path.exists(FOUND_POSTS_FILE):
+        with open(FOUND_POSTS_FILE, "r", encoding="utf-8") as f:
+            LOADED_POSTS = set(line.strip() for line in f)
+        f.close()
+    return LOADED_POSTS
 
 def save_found_post(post_text):
+    global FOUND_POSTS_FILE
     logger.info("save_found_post...")
-    trimmed_post = normalize_text(post_text)
     with open(FOUND_POSTS_FILE, "a", encoding="utf-8") as f:
-        f.write(trimmed_post + "\n")
+        f.write(post_text + "\n")
+    f.close()
 
 def normalize_text(text):
     text = text.replace('\n', ' ').strip()
-    return text[:-30] if len(text) > 30 else text
+    return text
 
 def main():
-    global found_posts
+    global LOADED_POSTS, TRUTH_SOCIAL_ACCOUNTS, TWITTER_ACCOUNTS
     logger.info("Starting crypto monitoring...")
-    found_posts = load_found_posts()
+    LOADED_POSTS = load_found_posts()
     driver = None
     service = None
     try:
@@ -232,6 +227,9 @@ def main():
             time.sleep(2)
     except KeyboardInterrupt:
         logger.info("Monitoring stopped by user")
+        if driver:
+            driver.quit()
+            logger.info("Browser session closed on user interrupt.")
     except Exception as e:
         logger.error(f"Error in main monitoring loop: {e}")
     finally:
