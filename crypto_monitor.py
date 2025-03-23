@@ -13,7 +13,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 EMAIL_ENABLED = True
-DEBUG_ENABLED = False
+SMS_ENABLED = True
+DEBUG_ENABLED = True
+CHECK_CARRIER = False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,13 +48,21 @@ TRUTH_SOCIAL_ACCOUNTS = [
     ["DonaldJTrumpJr",True]
 ]
 
+CHECK_CARRIER_NUMBERS = ["13171234567"]
+
+EMAIL_RECIPIENTS = [
+    "abc@gmail.com" # Example Email
+]
+PHONE_NUMBERS = [
+    "13171234567@mms.cricketwireless.net" # Example Phone Number
+]
+
 GECKO_EXE_LOC = os.getenv('GECKO_EXE_LOC', '')
 BROWSER_EXE_LOC = os.getenv('BROWSER_EXE_LOC', '')
 BROWSER_PROFILE_DIR = os.getenv('BROWSER_PROFILE_DIR', '')
 EMAIL_SENDER = os.getenv('EMAIL_SENDER', '')
 EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD', '')
 EMAIL_SERVER = os.getenv('EMAIL_SERVER', '')
-EMAIL_RECEIVER =  os.getenv('EMAIL_RECEIVER', '')
 
 FOUND_POSTS_FILE = "found_posts.txt"
 BROWSER_TYPE = 'FIREFOX'
@@ -166,10 +176,13 @@ def alert_event(item, found_keywords, post_text, url_link):
     logger.info(f"Found crypto keywords in post by {item[0]}: {found_keywords}")
     logger.info(f"Post text: {post_text}")
     logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    subject = f"Crypto Account: {item[0]} found ({', '.join(found_keywords)})"
     if EMAIL_ENABLED and item[1]:
-        subject = f"Crypto Account: {item[0]} found ({', '.join(found_keywords)})"
-        body = f"LINK: {url_link}\nNew post from {item[0]}:\n\n{post_text}"
-        send_email(subject, body)
+        email_body = f"LINK: {url_link}\nNew post from {item[0]}:\n\n{post_text}"
+        send_email(subject, email_body)
+    if SMS_ENABLED and item[1]:
+        sms_message = subject + " - " + url_link
+        send_sms(sms_message)
     save_found_post(post_text)
 
 def scroll_down(driver, scrolls=5, scroll_height=500, wait_time=1):
@@ -179,15 +192,58 @@ def scroll_down(driver, scrolls=5, scroll_height=500, wait_time=1):
 
 def send_email(subject, body):
     logger.info("send_email...")
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL_SENDER
-    msg["To"] = EMAIL_RECEIVER
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
     with smtplib.SMTP_SSL(EMAIL_SERVER, 465) as server:
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
-    logger.info(f"Email sent: {subject}")
+        for email_address in EMAIL_RECIPIENTS:
+            msg = MIMEMultipart()
+            msg["From"] = EMAIL_SENDER
+            msg["To"] = email_address
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body, "plain"))
+            server.sendmail(EMAIL_SENDER, email_address, msg.as_string())
+            logging.info(f"Sent Email to {email_address}")
+            time.sleep(1)
+
+def send_sms(url_message):
+    logging.info("send_sms...")
+    with smtplib.SMTP_SSL(EMAIL_SERVER, 465) as server:
+        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        for phone_number in PHONE_NUMBERS:
+            msg = MIMEMultipart()
+            msg["From"] = EMAIL_SENDER
+            msg["To"] = phone_number
+            msg.attach(MIMEText(url_message, "plain"))
+            server.sendmail(EMAIL_SENDER, phone_number, msg.as_string())
+            logging.info(f"Sent SMS to {phone_number}")
+            time.sleep(1)
+
+def check_carrier():
+    logging.info("check_carrier...")
+    with smtplib.SMTP_SSL(EMAIL_SERVER, 465) as server:
+        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        for phone_number in CHECK_CARRIER_NUMBERS:
+            carriers = {
+                "AT&T SMS": f"{phone_number}@txt.att.net",
+                "AT&T MMS": f"{phone_number}@mms.att.net",
+                "T-Mobile": f"{phone_number}@tmomail.net",
+                "Verizon": f"{phone_number}@vtext.com",
+                "Verizon Emo": f"{phone_number}@vzwpix.com",
+                "Sprint (T-Mobile)": f"{phone_number}@messaging.sprintpcs.com",
+                "US Cellular": f"{phone_number}@email.uscc.net",
+                "Cricket Wireless": f"{phone_number}@mms.cricketwireless.net",
+                "Boost Mobile": f"{phone_number}@sms.myboostmobile.com",
+                "Metro by T-Mobile": f"{phone_number}@mymetropcs.com",
+                "H2O Wireless": f"{phone_number}@mms.h2owireless.com",
+                "Google Fi": f"{phone_number}@msg.fi.google.com",
+            }
+            for carrier, email in carriers.items():
+                msg = MIMEMultipart()
+                msg["From"] = EMAIL_SENDER
+                msg["To"] = email
+                msg.attach(MIMEText(f"Carrier: {carrier}\nPhoneNumber: {email}", "plain"))
+                server.sendmail(EMAIL_SENDER, email, msg.as_string())
+                logging.info(f"Checking SMS Carrier for {email}")
+                time.sleep(1)
 
 def load_found_posts():
     global FOUND_POSTS_FILE, LOADED_POSTS
@@ -212,7 +268,10 @@ def normalize_text(text):
 
 def main():
     global LOADED_POSTS, TRUTH_SOCIAL_ACCOUNTS, TWITTER_ACCOUNTS
-    logger.info("Starting crypto monitoring...")
+    if CHECK_CARRIER:
+        check_carrier()
+        logger.info("Sent text messages to all carriers please confirm cell carrier...")
+        return
     LOADED_POSTS = load_found_posts()
     driver = None
     service = None
@@ -252,7 +311,8 @@ def main():
             logger.info("Deleted geckodriver.log")
         except Exception as e:
             logger.error(f"Failed to delete geckodriver.log: {e}")
-    logger.info("Completed crypto monitoring...")
 
+logger.info("Starting crypto monitoring...")
 if __name__ == "__main__":
-    main() 
+    main()
+logger.info("Completed crypto monitoring...")
