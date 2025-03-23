@@ -6,6 +6,7 @@ from selenium import webdriver
 from selenium.common import StaleElementReferenceException, NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 import smtplib
@@ -63,28 +64,45 @@ BROWSER_PROFILE_DIR = os.getenv('BROWSER_PROFILE_DIR', '')
 EMAIL_SENDER = os.getenv('EMAIL_SENDER', '')
 EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD', '')
 EMAIL_SERVER = os.getenv('EMAIL_SERVER', '')
+BROWSER_TYPE = os.getenv('BROWSER_TYPE', '')
 
 FOUND_POSTS_FILE = "found_posts.txt"
-BROWSER_TYPE = 'FIREFOX'
 LOADED_POSTS = set()
 
 def setup_browser():
-    service = FirefoxService(GECKO_EXE_LOC)
-    options = webdriver.FirefoxOptions()
-    options.binary_location = BROWSER_EXE_LOC
-    options.add_argument("--log-level=3")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.set_preference("browser.console.logLevel", "fatal")
-    options.set_preference("webdriver.log.file", "NUL" if os.name == "nt" else "/dev/null")
-    options.set_preference("profile", BROWSER_PROFILE_DIR)
-    # Comment to view
-    # options.add_argument('--headless')
-    # options.add_argument("--window-size=0,0")
-    # options.add_argument("--window-size=1920,1080")
-    driver = webdriver.Firefox(service=service, options=options)
-    logger.info(driver.capabilities.get("moz:profile"))
-    return driver
+    logger.info("setup_browser....")
+    if BROWSER_TYPE == 'FIREFOX':
+        service = FirefoxService(GECKO_EXE_LOC)
+        options = webdriver.FirefoxOptions()
+        options.binary_location = BROWSER_EXE_LOC
+        options.add_argument("--log-level=3")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.set_preference("browser.console.logLevel", "fatal")
+        options.set_preference("webdriver.log.file", "NUL" if os.name == "nt" else "/dev/null")
+        options.set_preference("profile", BROWSER_PROFILE_DIR)
+        # Comment to view
+        # options.add_argument('--headless')
+        # options.add_argument("--window-size=0,0")
+        # options.add_argument("--window-size=1920,1080")
+        driver = webdriver.Firefox(service=service, options=options)
+        logger.info(driver.capabilities.get("moz:profile"))
+        logger.info(f"Using {BROWSER_TYPE} driver.")
+        return driver
+    elif BROWSER_TYPE == 'CHROME':
+        logger.info(f"Using {BROWSER_TYPE} driver.")
+        service = ChromeService(GECKO_EXE_LOC)
+        options = webdriver.ChromeOptions()
+        options.binary_location = BROWSER_EXE_LOC
+        options.add_argument("--log-level=3")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        driver = webdriver.Chrome(service=service, options=options)
+        logger.info(f"Using {BROWSER_TYPE} driver.")
+        return driver
+    else:
+        logger.warning(f"Unknown {BROWSER_TYPE} driver.")
+    return None
 
 def check_for_keywords(text):
     global LOADED_POSTS, CRYPTO_KEYWORDS, DEBUG_ENABLED
